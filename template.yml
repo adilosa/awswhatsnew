@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion : '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  AwsWhatsNew:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.6
+      Handler: handler.lambda_handler
+      CodeUri: lambda.zip
+      Timeout: 200
+      Environment:
+        Variables:
+          bucket: !Ref AwsNewsBucket
+      Policies:
+        Statement:
+          -
+            Effect: "Allow"
+            Action:
+              - "kms:Decrypt"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource:
+              Fn::GetAtt:
+                - "SecretsKey"
+                - "Arn"
+          -
+            Effect: "Allow"
+            Action:
+              - "s3:GetObject"
+            Resource:
+              !Join ['', ['arn:aws:s3:::', !Ref AwsNewsBucket, '/secrets.json']]
+          -
+            Effect: "Allow"
+            Action:
+              - "s3:GetObject"
+              - "s3:PutObject"
+            Resource:
+              !Join ['', ['arn:aws:s3:::', !Ref AwsNewsBucket, '/news.rss']]
+  AwsNewsBucket:
+    Type: AWS::S3::Bucket
+  ScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      ScheduleExpression: "rate(5 minutes)"
+      Targets:
+        -
+          Arn:
+            Fn::GetAtt:
+              - "AwsWhatsNew"
+              - "Arn"
+          Id: "AwsWhatsNewTriggerV1"
+  PermissionForEventsToInvokeLambda:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName:
+        Ref: "AwsWhatsNew"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn:
+        Fn::GetAtt:
+          - "ScheduledRule"
+          - "Arn"
+  SecretsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: "key-default-1"
+        Statement:
+          -
+            Sid: "Allow administration of the key"
+            Effect: "Allow"
+            Principal: 
+              AWS: 
+                - "arn:aws:iam::099765626945:root"
+                - "arn:aws:iam::099765626945:user/andrew_dilosa"
+                - "arn:aws:iam::099765626945:user/AndrewsMacbookPro"
+            Action: "kms:*"
+            Resource: "*"
+
