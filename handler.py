@@ -40,7 +40,7 @@ def lambda_handler(event, context):
     for item in news_items(new_xml):
         if item.find('guid').text not in old:
             try:
-                api.PostUpdate(item.find('title').text[:114] + ' ' + item.find('link').text)
+                api.PostUpdate(item.find('title').text[:254] + ' ' + item.find('link').text)
                 count += 1
             except:
                 print("Failed to post tweet")
