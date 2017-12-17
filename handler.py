@@ -16,9 +16,15 @@ def lambda_handler(event, context):
     obj = boto3.resource('s3').Object(os.environ['bucket'], 'news.rss')
     new_xml = requests.get("http://aws.amazon.com/new/feed/").text
     try:
-        old = set([item.find('guid').text for item in news_items(obj.get()['Body'].read().decode('utf-8'))])
-    except:
+        old = set(
+            [
+                item.find('guid').text
+                for item in news_items(obj.get()['Body'].read().decode('utf-8'))
+            ]
+        )
+    except Exception as e:
         print("Failed to read old items")
+        print(e)
         old = set()
 
     secrets = json.loads(
@@ -40,10 +46,17 @@ def lambda_handler(event, context):
     for item in news_items(new_xml):
         if item.find('guid').text not in old:
             try:
-                api.PostUpdate(item.find('title').text[:254] + ' ' + item.find('link').text)
+                api.PostUpdate(
+                    (
+                        item.find('title').text + '\n\n' +
+                        item.find('description').text[3:-10]
+                    )[:249] + '... ' + item.find('link').text,
+                    verify_status_length=False
+                )
                 count += 1
-            except:
-                print("Failed to post tweet")
+            except Exception as e:
+               print("Failed to post tweet")
+               print(e)
 
     obj.put(Body=new_xml)
     return f"Published {count} tweets"
