@@ -9,6 +9,7 @@ name = "pypi"
 
 python-twitter = "*"
 requests = "*"
+"boto3" = "*"
 
 
 [dev-packages]

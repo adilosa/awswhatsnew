@@ -2,10 +2,32 @@ import os
 import json
 import xml.etree.ElementTree as ET
 
+from html.parser import HTMLParser
+
 import requests
 import boto3
 from botocore.client import Config
 import twitter
+
+
+class MLStripper(HTMLParser):
+    def __init__(self):
+        self.reset()
+        self.strict = False
+        self.convert_charrefs = True
+        self.fed = []
+
+    def handle_data(self, d):
+        self.fed.append(d)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+
+def strip_tags(html):
+    s = MLStripper()
+    s.feed(html)
+    return s.get_data()
 
 
 def news_items(xml):
@@ -19,7 +41,9 @@ def lambda_handler(event, context):
         old = set(
             [
                 item.find('guid').text
-                for item in news_items(obj.get()['Body'].read().decode('utf-8'))
+                for item in news_items(
+                    obj.get()['Body'].read().decode('utf-8')
+                )
             ]
         )
     except Exception as e:
@@ -48,15 +72,16 @@ def lambda_handler(event, context):
             try:
                 api.PostUpdate(
                     (
-                        item.find('title').text + '\n\n' +
-                        item.find('description').text[3:-10]
+                        strip_tags(item.find('title').text) + '\n\n' +
+                        strip_tags(item.find('description').text)
                     )[:249] + '... ' + item.find('link').text,
                     verify_status_length=False
                 )
                 count += 1
             except Exception as e:
-               print("Failed to post tweet")
-               print(e)
+                print("Failed to post tweet")
+                print(e)
 
     obj.put(Body=new_xml)
+
     return f"Published {count} tweets"
