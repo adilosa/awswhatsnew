@@ -1,13 +1,17 @@
-import os
 import json
-import xml.etree.ElementTree as ET
-
+import logging
+import os
+import time
 from html.parser import HTMLParser
 
-import requests
 import boto3
-from botocore.client import Config
+import feedparser
+import requests
 import twitter
+from botocore.client import Config
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 class MLStripper(HTMLParser):
@@ -21,7 +25,7 @@ class MLStripper(HTMLParser):
         self.fed.append(d)
 
     def get_data(self):
-        return ''.join(self.fed)
+        return "".join(self.fed)
 
 
 def strip_tags(html):
@@ -30,58 +34,51 @@ def strip_tags(html):
     return s.get_data()
 
 
-def news_items(xml):
-    return ET.ElementTree(ET.fromstring(xml)).getroot().find('channel').findall('item')
+api = twitter.Api(
+    **{
+        k: v
+        for k, v in json.loads(
+            boto3.client("s3", config=Config(signature_version="s3v4"))
+            .get_object(Bucket=os.environ["bucket"], Key="secrets.json")["Body"]
+            .read()
+            .decode("utf-8")
+        ).items()
+        if k
+        in {
+            "consumer_key",
+            "consumer_secret",
+            "access_token_key",
+            "access_token_secret",
+        }
+    }
+)
+
+posts_table = boto3.resource("dynamodb", region_name="us-west-2").Table(os.environ["PostsTableName"])
+
+
+def within(t: time.struct_time, minutes: int) -> bool:
+    return abs(time.mktime(time.gmtime()) - time.mktime(t)) <= (minutes * 60)
+
+
+def already_posted(guid: str) -> bool:
+    return "Item" in posts_table.get_item(Key={"guid": guid})
 
 
 def lambda_handler(event, context):
-    obj = boto3.resource('s3').Object(os.environ['bucket'], 'news.rss')
-    new_xml = requests.get("http://aws.amazon.com/new/feed/").text
-    try:
-        old = set(
-            [
-                item.find('guid').text
-                for item in news_items(
-                    obj.get()['Body'].read().decode('utf-8')
-                )
-            ]
-        )
-    except Exception as e:
-        print("Failed to read old items")
-        print(e)
-        old = set()
-
-    secrets = json.loads(
-        boto3.client(
-            's3', config=Config(signature_version='s3v4')
-        ).get_object(
-            Bucket=os.environ['bucket'], Key='secrets.json'
-        )['Body'].read().decode('utf-8')
-    )
-
-    api = twitter.Api(
-        consumer_key=secrets['consumer_key'],
-        consumer_secret=secrets['consumer_secret'],
-        access_token_key=secrets['access_token_key'],
-        access_token_secret=secrets['access_token_secret']
-    )
-
-    count = 0
-    for item in news_items(new_xml):
-        if item.find('guid').text not in old:
+    recency_threshold = int(os.environ['PostRecencyThreshold'])
+    for entry in feedparser.parse("http://aws.amazon.com/new/feed/").entries:
+        logger.info(f"Checking {entry.guid} - {entry.title}")
+        if within(entry.published_parsed, minutes=recency_threshold) and not already_posted(entry.guid):
+            logger.info(f"Posting {entry.guid} - {entry.title}")
             try:
                 api.PostUpdate(
-                    (
-                        strip_tags(item.find('title').text) + '\n\n' +
-                        strip_tags(item.find('description').text)
-                    )[:249] + '... ' + item.find('link').text,
-                    verify_status_length=False
+                    (entry.title + "\n\n" + strip_tags(entry.description))[:249]
+                    + "... "
+                    + entry.link,
+                    verify_status_length=False,
                 )
-                count += 1
-            except Exception as e:
-                print("Failed to post tweet")
-                print(e)
-
-    obj.put(Body=new_xml)
-
-    return f"Published {count} tweets"
+                posts_table.put_item(
+                    Item={"guid": entry.guid, "title": entry.title, "link": entry.link}
+                )
+            except Exception:
+                logger.exception(f"Failed to post tweet")

@@ -6,13 +6,22 @@ Resources:
     Properties:
       Runtime: python3.6
       Handler: handler.lambda_handler
-      CodeUri: lambda.zip
+      CodeUri: ./
       Timeout: 200
       Environment:
         Variables:
           bucket: !Ref AwsNewsBucket
+          PostsTableName: !Ref AwsNewsRecentPostsTable
+          PostRecencyThreshold: 7
+      Events:
+        CheckForNewPostsScheduledEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
       Policies:
-        Statement:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AwsNewsRecentPostsTable
+        - Statement:
           -
             Effect: "Allow"
             Action:
@@ -38,28 +47,16 @@ Resources:
               !Join ['', ['arn:aws:s3:::', !Ref AwsNewsBucket, '/news.rss']]
   AwsNewsBucket:
     Type: AWS::S3::Bucket
-  ScheduledRule:
-    Type: AWS::Events::Rule
+  AwsNewsRecentPostsTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      ScheduleExpression: "rate(5 minutes)"
-      Targets:
-        -
-          Arn:
-            Fn::GetAtt:
-              - "AwsWhatsNew"
-              - "Arn"
-          Id: "AwsWhatsNewTriggerV1"
-  PermissionForEventsToInvokeLambda:
-    Type: "AWS::Lambda::Permission"
-    Properties:
-      FunctionName:
-        Ref: "AwsWhatsNew"
-      Action: "lambda:InvokeFunction"
-      Principal: "events.amazonaws.com"
-      SourceArn:
-        Fn::GetAtt:
-          - "ScheduledRule"
-          - "Arn"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: guid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: guid
+          KeyType: HASH
   SecretsKey:
     Type: AWS::KMS::Key
     Properties:
