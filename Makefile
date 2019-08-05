@@ -1,17 +1,16 @@
-lambda.zip: dependencies.zip *.py
-	cp dependencies.zip lambda.zip
-	zip -g lambda.zip *.py
+Pipfile.lock: Pipfile
+	pipenv lock 
 
-dependencies.zip: Pipfile
-	cd `pipenv --venv`/lib/python3.6/site-packages; zip -r9 lambda.zip *
-	mv `pipenv --venv`/lib/python3.6/site-packages/lambda.zip dependencies.zip
+requirements.txt: Pipfile.lock
+	pipenv lock -r > requirements.txt
 
-packaged.yml: template.yml lambda.zip
-	cfn-lint validate template.yml
-	sam package --template-file template.yml --s3-bucket awswhatsnew-artifacts --output-template-file packaged.yml
+packaged.yml: template.yml requirements.txt *.py
+	pipenv run cfn-lint template.yml
+	pipenv run sam build -m requirements.txt 
+	pipenv run sam package --s3-bucket awswhatsnew-artifacts --output-template-file packaged.yml
 
-deploy: packaged.yml lambda.zip
-	sam deploy --template-file packaged.yml --capabilities CAPABILITY_IAM --stack-name awswhatsnew
+deploy: packaged.yml
+	sam deploy --template-file packaged.yml --capabilities CAPABILITY_IAM --stack-name awswhatsnew --region us-west-2
 
 
 clean:

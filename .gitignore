@@ -1,4 +1,6 @@
 *.zip
 *.pyc
 packaged.yml
-node_modules
+requirements.txt
+.aws-sam/
+.mypy_cache/
