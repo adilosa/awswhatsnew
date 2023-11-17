@@ -4,10 +4,11 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-python-twitter = "*"
 requests = "*"
+requests_oauthlib = "*"
 "boto3" = "*"
 feedparser = "*"
+tweepy = "*"
 
 [dev-packages]
 "boto3" = "*"
