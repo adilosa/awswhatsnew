@@ -6,7 +6,6 @@ from html.parser import HTMLParser
 
 import boto3
 import feedparser
-import requests
 import twitter
 from botocore.client import Config
 
@@ -65,10 +64,9 @@ def already_posted(guid: str) -> bool:
 
 
 def lambda_handler(event, context):
-    recency_threshold = int(os.environ['PostRecencyThreshold'])
     for entry in feedparser.parse("http://aws.amazon.com/new/feed/").entries:
         logger.info(f"Checking {entry.guid} - {entry.title}")
-        if within(entry.published_parsed, minutes=recency_threshold) and not already_posted(entry.guid):
+        if not already_posted(entry.guid):
             logger.info(f"Posting {entry.guid} - {entry.title}")
             try:
                 api.PostUpdate(

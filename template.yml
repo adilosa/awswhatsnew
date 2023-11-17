@@ -12,7 +12,6 @@ Resources:
         Variables:
           bucket: !Ref AwsNewsBucket
           PostsTableName: !Ref AwsNewsRecentPostsTable
-          PostRecencyThreshold: "180"
       Events:
         CheckForNewPostsScheduledEvent:
           Type: Schedule
