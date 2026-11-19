@@ -1,0 +1,18 @@
+[project]
+name = "awswhatsnew"
+version = "0.1.0"
+description = "Posts AWS What's New announcements to X"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "boto3",
+    "feedparser",
+    "tweepy",
+]
+
+[dependency-groups]
+dev = [
+    "black",
+    "cfn-lint",
+    "mypy",
+    "ruff",
+]

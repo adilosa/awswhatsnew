@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 from html.parser import HTMLParser
 
@@ -15,9 +16,7 @@ logger.setLevel(logging.INFO)
 
 class MLStripper(HTMLParser):
     def __init__(self):
-        self.reset()
-        self.strict = False
-        self.convert_charrefs = True
+        super().__init__(convert_charrefs=True)
         self.fed = []
 
     def handle_data(self, d):
@@ -27,10 +26,9 @@ class MLStripper(HTMLParser):
         return "".join(self.fed)
 
 
-s = MLStripper()
-
 
 def strip_tags(html):
+    s = MLStripper()
     s.feed(html)
     return s.get_data()
 
@@ -61,7 +59,8 @@ def already_posted(guid: str) -> bool:
 client = tweepy.Client(**secret)
 
 separator = "\n\n"
-ellipsis = "... "
+ellipsis = "..."
+url_pattern = re.compile(r"https?://\S+")
 
 
 def lambda_handler(event, context):
@@ -72,28 +71,22 @@ def lambda_handler(event, context):
         )
         return
     for entry in feedparser.parse("http://aws.amazon.com/new/feed/").entries:
-        logger.info(f"Checking {entry.guid} - {entry.title}")
         if not already_posted(entry.guid):
             logger.info(f"Posting {entry.guid} - {entry.title}")
             try:
-                char_budget = (
-                    280
-                    - len(entry.title)
-                    - len(entry.link)
-                    - len(separator)
-                    - len(ellipsis)
-                )
-                tweet_text = (
-                    entry.title
-                    + separator
-                    + strip_tags(entry.description)[:char_budget]
-                    + ellipsis
-                    + entry.link
-                )
+                # no link: X bills posts containing a URL at ~13x the plain rate
+                char_budget = 280 - len(entry.title) - len(separator)
+                description = url_pattern.sub("", strip_tags(entry.description)).strip()
+                if len(description) > char_budget:
+                    description = (
+                        description[: char_budget - len(ellipsis)].rstrip() + ellipsis
+                    )
+                tweet_text = entry.title + separator + description
                 client.create_tweet(text=tweet_text)
                 posts_table.put_item(
                     Item={"guid": entry.guid, "title": entry.title, "link": entry.link}
                 )
+                return
             except tweepy.TooManyRequests as e:
                 response = e.response
                 rate_limit_reset = int(response.headers["x-rate-limit-reset"])
@@ -107,5 +100,10 @@ def lambda_handler(event, context):
                     }
                 )
                 return
+            except tweepy.HTTPException as e:
+                if e.response is not None and e.response.status_code == 402:
+                    logger.error("X API credits depleted, exiting lambda for now")
+                    return
+                logger.exception("Failed to post tweet")
             except Exception:
                 logger.exception("Failed to post tweet")

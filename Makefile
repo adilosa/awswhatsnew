@@ -1,17 +1,27 @@
-Pipfile.lock: Pipfile
-	pipenv lock 
+SAM := uvx --from aws-sam-cli sam
+# sam build needs a python matching the lambda runtime (with pip) on the PATH
+BUILD_VENV := .build-venv
 
-requirements.txt: Pipfile.lock
-	pipenv requirements > requirements.txt
+uv.lock: pyproject.toml
+	uv lock
 
-packaged.yml: template.yml requirements.txt *.py
-	pipenv run cfn-lint template.yml
-	pipenv run sam build -m requirements.txt 
-	pipenv run sam package --s3-bucket awswhatsnew-artifacts --output-template-file packaged.yml
+requirements.txt: uv.lock
+	uv export --no-dev --no-hashes --no-emit-project --format requirements-txt -o requirements.txt
+
+$(BUILD_VENV):
+	uv venv --seed --python 3.12 $(BUILD_VENV)
+
+build: template.yml requirements.txt src/*.py | $(BUILD_VENV)
+	uv run cfn-lint template.yml
+	PATH="$(CURDIR)/$(BUILD_VENV)/bin:$$PATH" $(SAM) build -m requirements.txt
+
+packaged.yml: build
+	$(SAM) package --s3-bucket awswhatsnew-artifacts --output-template-file packaged.yml
 
 deploy: packaged.yml
-	sam deploy --template-file packaged.yml --capabilities CAPABILITY_IAM --stack-name awswhatsnew --region us-west-2
-
+	$(SAM) deploy --template-file packaged.yml --capabilities CAPABILITY_IAM --stack-name awswhatsnew --region us-west-2
 
 clean:
-	rm dependencies.zip lambda.zip packaged.yml
+	rm -rf .aws-sam packaged.yml
+
+.PHONY: build deploy clean

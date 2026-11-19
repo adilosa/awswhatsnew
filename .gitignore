@@ -4,3 +4,7 @@ packaged.yml
 requirements.txt
 .aws-sam/
 .mypy_cache/
+.build-venv/
+.venv/
+secrets.json
+.DS_Store

@@ -4,9 +4,9 @@ Resources:
   AwsWhatsNew:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: python3.7
+      Runtime: python3.12
       Handler: handler.lambda_handler
-      CodeUri: ./
+      CodeUri: src/
       Timeout: 200
       Environment:
         Variables:
